@@ -50,7 +50,7 @@ def clean_text(text):
     text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
     return text.strip()
 
-def run_ocr(image_paths):
+def run_ocr(image_paths, reader):
     full_text = ""
     for path in image_paths:
         img = Image.open(path)
@@ -58,7 +58,7 @@ def run_ocr(image_paths):
         full_text += text + "\n"
     return full_text
 
-def create_selectable_pdf(image_paths, output_path):
+def create_selectable_pdf(image_paths, output_path, reader):
     c = canvas.Canvas(output_path, pagesize=A4)
     page_width, page_height = A4
     for path in image_paths:
