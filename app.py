@@ -48,7 +48,7 @@ def clean_text(text):
     text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
     return text.strip()
 
-def run_ocr(image_paths, reader)::
+def run_ocr(image_paths, reader):
     full_text = ""
     for path in image_paths:
         result = reader.readtext(path)
