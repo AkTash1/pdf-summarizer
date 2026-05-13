@@ -27,7 +27,6 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 def load_ocr():
     return easyocr.Reader(['en'])
 
-reader = load_ocr()
 
 # ── Helper functions ─────────────────────────────────────
 def pdf_to_images(pdf_path, output_folder):
@@ -49,7 +48,7 @@ def clean_text(text):
     text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
     return text.strip()
 
-def run_ocr(image_paths):
+def run_ocr(image_paths, reader)::
     full_text = ""
     for path in image_paths:
         result = reader.readtext(path)
@@ -61,7 +60,7 @@ def run_ocr(image_paths):
         full_text += "\n"
     return full_text
 
-def create_selectable_pdf(image_paths, output_path):
+def create_selectable_pdf(image_paths, output_path, reader):
     c = canvas.Canvas(output_path, pagesize=A4)
     page_width, page_height = A4
     for image_path in image_paths:
@@ -96,7 +95,7 @@ if uploaded_file:
     st.success(f"✅ Uploaded: {uploaded_file.name}")
 
     if st.button("🚀 Process Document", type="primary"):
-
+        reader = load_ocr()
         with tempfile.TemporaryDirectory() as tmpdir:
 
             # Save uploaded PDF
@@ -111,13 +110,13 @@ if uploaded_file:
 
             # Stage 2 — OCR
             with st.status("Running OCR on all pages..."):
-                full_text = run_ocr(image_paths)
+                full_text = run_ocr(image_paths, reader)
                 st.write(f"✅ OCR complete — {len(full_text)} characters extracted")
 
             # Stage 3 — Selectable PDF
             with st.status("Creating selectable PDF..."):
                 selectable_pdf_path = os.path.join(tmpdir, "selectable.pdf")
-                create_selectable_pdf(image_paths, selectable_pdf_path)
+                create_selectable_pdf(image_paths, selectable_pdf_path, reader)
                 with open(selectable_pdf_path, "rb") as f:
                     selectable_pdf_bytes = f.read()
                 st.write("✅ Selectable PDF created")
