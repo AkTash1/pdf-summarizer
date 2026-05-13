@@ -1,0 +1,8 @@
+streamlit
+pymupdf
+easyocr
+reportlab
+groq
+pillow
+torch
+torchvision
