@@ -1,12 +1,9 @@
 streamlit
 pymupdf
-reportlab
-groq
-pillow
 pytesseract
-streamlit
-pymupdf
-pytesseract
+easyocr
+torch
+torchvision
 reportlab
 groq
 pillow
