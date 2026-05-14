@@ -16,10 +16,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ── Session state init ────────────────────────────────────
-if "results" not in st.session_state:
-    st.session_state.results = None
-
 st.title("📄 Document Summarizer")
 st.caption("Upload a scanned PDF to get summaries and selectable text")
 
@@ -31,6 +27,7 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 def load_ocr():
     return easyocr.Reader(['en'])
 
+reader = load_ocr()
 
 # ── Helper functions ─────────────────────────────────────
 def pdf_to_images(pdf_path, output_folder):
@@ -52,10 +49,10 @@ def clean_text(text):
     text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
     return text.strip()
 
-def run_ocr(image_paths, reader):
+def run_ocr(image_paths):
     full_text = ""
     for path in image_paths:
-      result = reader.readtext(path)
+        result = reader.readtext(path)
         for (bbox, text, confidence) in result:
             if confidence >= 0.4:
                 cleaned = clean_text(text)
@@ -64,7 +61,7 @@ def run_ocr(image_paths, reader):
         full_text += "\n"
     return full_text
 
-def create_selectable_pdf(image_paths, output_path, reader):
+def create_selectable_pdf(image_paths, output_path):
     c = canvas.Canvas(output_path, pagesize=A4)
     page_width, page_height = A4
     for image_path in image_paths:
@@ -100,11 +97,6 @@ if uploaded_file:
 
     if st.button("🚀 Process Document", type="primary"):
 
-        # Reset previous results
-        st.session_state.results = None
-
-        reader = load_ocr()
-
         with tempfile.TemporaryDirectory() as tmpdir:
 
             # Save uploaded PDF
@@ -119,13 +111,13 @@ if uploaded_file:
 
             # Stage 2 — OCR
             with st.status("Running OCR on all pages..."):
-                full_text = run_ocr(image_paths, reader)
+                full_text = run_ocr(image_paths)
                 st.write(f"✅ OCR complete — {len(full_text)} characters extracted")
 
             # Stage 3 — Selectable PDF
             with st.status("Creating selectable PDF..."):
                 selectable_pdf_path = os.path.join(tmpdir, "selectable.pdf")
-                create_selectable_pdf(image_paths, selectable_pdf_path, reader)
+                create_selectable_pdf(image_paths, selectable_pdf_path)
                 with open(selectable_pdf_path, "rb") as f:
                     selectable_pdf_bytes = f.read()
                 st.write("✅ Selectable PDF created")
@@ -167,62 +159,53 @@ Write in full paragraphs. Be exhaustive.
 Document: {full_text}
 """)
                 st.write("✅ Covenants & Schedules done")
-# Save everything to session state
-        st.session_state.results = {
-            "quick_summary": quick_summary,
-            "deep_summary": deep_summary,
-            "covenant_summary": covenant_summary,
-            "selectable_pdf_bytes": selectable_pdf_bytes
-        }
 
-# ── Display results (persists across download clicks) ─────
-if st.session_state.results:
-    r = st.session_state.results
+        # ── Display Results ───────────────────────────────
+        st.divider()
+        st.subheader("📥 Downloads")
+        col1, col2, col3, col4 = st.columns(4)
 
-    st.divider()
-    st.subheader("📥 Downloads")
-    col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.download_button(
+                "📄 Selectable PDF",
+                data=selectable_pdf_bytes,
+                file_name="selectable_document.pdf",
+                mime="application/pdf"
+            )
+        with col2:
+            st.download_button(
+                "⚡ Quick Summary",
+                data=quick_summary,
+                file_name="quick_summary.md",
+                mime="text/markdown"
+            )
+        with col3:
+            st.download_button(
+                "📋 Deep Summary",
+                data=deep_summary,
+                file_name="deep_summary.md",
+                mime="text/markdown"
+            )
+        with col4:
+            st.download_button(
+                "⚖️ Covenants & Schedules",
+                data=covenant_summary,
+                file_name="covenants_schedules.md",
+                mime="text/markdown"
+            )
 
-    with col1:
-        st.download_button(
-            "📄 Selectable PDF",
-            data=r["selectable_pdf_bytes"],
-            file_name="selectable_document.pdf",
-            mime="application/pdf"
-        )
-    with col2:
-        st.download_button(
+        st.divider()
+
+        # ── Display summaries in tabs ─────────────────────
+        tab1, tab2, tab3 = st.tabs([
             "⚡ Quick Summary",
-            data=r["quick_summary"],
-            file_name="quick_summary.md",
-            mime="text/markdown"
-        )
-    with col3:
-        st.download_button(
             "📋 Deep Summary",
-                        data=r["deep_summary"],
-            file_name="deep_summary.md",
-            mime="text/markdown"
-        )
-    with col4:
-        st.download_button(
-            "⚖️ Covenants & Schedules",
-            data=r["covenant_summary"],
-            file_name="covenants_schedules.md",
-            mime="text/markdown"
-        )
+            "⚖️ Covenants & Schedules"
+        ])
 
-    st.divider()
-
-    tab1, tab2, tab3 = st.tabs([
-        "⚡ Quick Summary",
-        "📋 Deep Summary",
-        "⚖️ Covenants & Schedules"
-    ])
-
-    with tab1:
-        st.markdown(r["quick_summary"])
-    with tab2:
-        st.markdown(r["deep_summary"])
-    with tab3:
-        st.markdown(r["covenant_summary"])
+        with tab1:
+            st.markdown(quick_summary)
+        with tab2:
+            st.markdown(deep_summary)
+        with tab3:
+            st.markdown(covenant_summary)
