@@ -8,6 +8,8 @@ from groq import Groq
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import PIL.Image
+import pytesseract
+from PIL import Image
 
 # ── Page config ──────────────────────────────────────────
 st.set_page_config(
@@ -27,7 +29,6 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 def load_ocr():
     return easyocr.Reader(['en'])
 
-reader = load_ocr()
 
 # ── Helper functions ─────────────────────────────────────
 def pdf_to_images(pdf_path, output_folder):
@@ -52,31 +53,23 @@ def clean_text(text):
 def run_ocr(image_paths):
     full_text = ""
     for path in image_paths:
-        result = reader.readtext(path)
-        for (bbox, text, confidence) in result:
-            if confidence >= 0.4:
-                cleaned = clean_text(text)
-                if cleaned:
-                    full_text += cleaned + "\n"
-        full_text += "\n"
+        img = Image.open(path)
+        text = pytesseract.image_to_string(img)
+        full_text += text + "\n"
     return full_text
 
 def create_selectable_pdf(image_paths, output_path):
     c = canvas.Canvas(output_path, pagesize=A4)
     page_width, page_height = A4
-    for image_path in image_paths:
-        img = PIL.Image.open(image_path)
-        img_w, img_h = img.size
-        result = reader.readtext(image_path)
-        for (bbox, text, confidence) in result:
-            if confidence < 0.4:
-                continue
-            x1, y1 = bbox[0]
-            y2 = bbox[2][1]
-            pdf_x = (x1 / img_w) * page_width
-            pdf_y = page_height - (y2 / img_h) * page_height
-            c.setFont("Helvetica", 10)
-            c.drawString(pdf_x, pdf_y, text)
+    for path in image_paths:
+        img = Image.open(path)
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        for i, text in enumerate(data['text']):
+            if text.strip() and int(data['conf'][i]) > 40:
+                x = (data['left'][i] / img.width) * page_width
+                y = page_height - (data['top'][i] / img.height) * page_height
+                c.setFont("Helvetica", 10)
+                c.drawString(x, y, text)
         c.showPage()
     c.save()
 
@@ -96,6 +89,7 @@ if uploaded_file:
     st.success(f"✅ Uploaded: {uploaded_file.name}")
 
     if st.button("🚀 Process Document", type="primary"):
+        reader = load_ocr()
 
         with tempfile.TemporaryDirectory() as tmpdir:
 
