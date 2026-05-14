@@ -8,7 +8,7 @@ from groq import Groq
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from PIL import Image
-
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 # ── Page config ──────────────────────────────────────────
 st.set_page_config(
     page_title="Document Summarizer",
