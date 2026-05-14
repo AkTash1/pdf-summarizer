@@ -1,3 +1,8 @@
+import subprocess
+result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
+result2 = subprocess.run(['find', '/usr', '-name', 'tesseract'], capture_output=True, text=True)
+st.write("which:", result.stdout)
+st.write("find:", result2.stdout)
 import streamlit as st
 import fitz
 import pytesseract
@@ -9,11 +14,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from PIL import Image
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
-import subprocess
-result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
-result2 = subprocess.run(['find', '/usr', '-name', 'tesseract'], capture_output=True, text=True)
-st.write("which:", result.stdout)
-st.write("find:", result2.stdout)
+
 # ── Page config ──────────────────────────────────────────
 st.set_page_config(
     page_title="Document Summarizer",
