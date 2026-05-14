@@ -1,13 +1,13 @@
 import streamlit as st
 import subprocess
-import pytesseract
+import sys
 
-st.title("Debug")
+# Force install tesseract at runtime
+subprocess.run(['apt-get', 'update'], capture_output=True)
+subprocess.run(['apt-get', 'install', '-y', 'tesseract-ocr'], capture_output=True)
+
+import pytesseract
+from PIL import Image
 
 result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True)
-result2 = subprocess.run(['find', '/usr', '-name', 'tesseract'], capture_output=True, text=True)
-result3 = subprocess.run(['find', '/', '-name', 'tesseract', '-type', 'f'], capture_output=True, text=True)
-
-st.write("which:", result.stdout or "NOT FOUND")
-st.write("find /usr:", result2.stdout or "NOT FOUND")
-st.write("find /:", result3.stdout or "NOT FOUND")
+st.write("tesseract path:", result.stdout or "still not found")
