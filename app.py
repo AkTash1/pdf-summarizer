@@ -1,13 +1,13 @@
 import streamlit as st
 import fitz
-import easyocr
+import pytesseract
 import os
 import re
 import tempfile
 from groq import Groq
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-import PIL.Image
+from PIL import Image
 
 # ── Page config ──────────────────────────────────────────
 st.set_page_config(
@@ -25,11 +25,6 @@ st.caption("Upload a scanned PDF to get summaries and selectable text")
 
 # ── Groq client ──────────────────────────────────────────
 client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-
-# ── Cache OCR reader ─────────────────────────────────────
-@st.cache_resource
-def load_ocr():
-    return easyocr.Reader(['en'])
 
 # ── Helper functions ─────────────────────────────────────
 def pdf_to_images(pdf_path, output_folder):
@@ -51,34 +46,30 @@ def clean_text(text):
     text = re.sub(r'^\d+$', '', text, flags=re.MULTILINE)
     return text.strip()
 
-def run_ocr(image_paths, reader):
+def run_ocr(image_paths):
     full_text = ""
     for path in image_paths:
-        result = reader.readtext(path)
-        for (bbox, text, confidence) in result:
-            if confidence >= 0.4:
-                cleaned = clean_text(text)
-                if cleaned:
-                    full_text += cleaned + "\n"
+        img = Image.open(path)
+        text = pytesseract.image_to_string(img)
+        cleaned = clean_text(text)
+        if cleaned:
+            full_text += cleaned + "\n"
         full_text += "\n"
     return full_text
 
-def create_selectable_pdf(image_paths, output_path, reader):
+def create_selectable_pdf(image_paths, output_path):
     c = canvas.Canvas(output_path, pagesize=A4)
     page_width, page_height = A4
     for image_path in image_paths:
-        img = PIL.Image.open(image_path)
+        img = Image.open(image_path)
         img_w, img_h = img.size
-        result = reader.readtext(image_path)
-        for (bbox, text, confidence) in result:
-            if confidence < 0.4:
-                continue
-            x1, y1 = bbox[0]
-            y2 = bbox[2][1]
-            pdf_x = (x1 / img_w) * page_width
-            pdf_y = page_height - (y2 / img_h) * page_height
-            c.setFont("Helvetica", 10)
-            c.drawString(pdf_x, pdf_y, text)
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        for i, text in enumerate(data['text']):
+            if text.strip() and int(data['conf'][i]) > 40:
+                x = (data['left'][i] / img_w) * page_width
+                y = page_height - ((data['top'][i] + data['height'][i]) / img_h) * page_height
+                c.setFont("Helvetica", 10)
+                c.drawString(x, y, text)
         c.showPage()
     c.save()
 
@@ -99,10 +90,7 @@ if uploaded_file:
 
     if st.button("🚀 Process Document", type="primary"):
 
-        # Reset previous results
         st.session_state.results = None
-
-        reader = load_ocr()
 
         with tempfile.TemporaryDirectory() as tmpdir:
 
@@ -118,13 +106,13 @@ if uploaded_file:
 
             # Stage 2 — OCR
             with st.status("Running OCR on all pages..."):
-                full_text = run_ocr(image_paths, reader)
+                full_text = run_ocr(image_paths)
                 st.write(f"✅ OCR complete — {len(full_text)} characters extracted")
 
             # Stage 3 — Selectable PDF
             with st.status("Creating selectable PDF..."):
                 selectable_pdf_path = os.path.join(tmpdir, "selectable.pdf")
-                create_selectable_pdf(image_paths, selectable_pdf_path, reader)
+                create_selectable_pdf(image_paths, selectable_pdf_path)
                 with open(selectable_pdf_path, "rb") as f:
                     selectable_pdf_bytes = f.read()
                 st.write("✅ Selectable PDF created")
@@ -167,7 +155,7 @@ Document: {full_text}
 """)
                 st.write("✅ Covenants & Schedules done")
 
-        # Save everything to session state
+        # Save to session state
         st.session_state.results = {
             "quick_summary": quick_summary,
             "deep_summary": deep_summary,
