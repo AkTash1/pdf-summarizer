@@ -8,8 +8,6 @@ from groq import Groq
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import PIL.Image
-import pytesseract
-from PIL import Image
 
 # ── Page config ──────────────────────────────────────────
 st.set_page_config(
@@ -17,6 +15,10 @@ st.set_page_config(
     page_icon="📄",
     layout="wide"
 )
+
+# ── Session state init ────────────────────────────────────
+if "results" not in st.session_state:
+    st.session_state.results = None
 
 st.title("📄 Document Summarizer")
 st.caption("Upload a scanned PDF to get summaries and selectable text")
@@ -28,7 +30,6 @@ client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['en'])
-
 
 # ── Helper functions ─────────────────────────────────────
 def pdf_to_images(pdf_path, output_folder):
@@ -53,23 +54,31 @@ def clean_text(text):
 def run_ocr(image_paths, reader):
     full_text = ""
     for path in image_paths:
-        img = Image.open(path)
-        text = pytesseract.image_to_string(img)
-        full_text += text + "\n"
+        result = reader.readtext(path)
+        for (bbox, text, confidence) in result:
+            if confidence >= 0.4:
+                cleaned = clean_text(text)
+                if cleaned:
+                    full_text += cleaned + "\n"
+        full_text += "\n"
     return full_text
 
 def create_selectable_pdf(image_paths, output_path, reader):
     c = canvas.Canvas(output_path, pagesize=A4)
     page_width, page_height = A4
-    for path in image_paths:
-        img = Image.open(path)
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-        for i, text in enumerate(data['text']):
-            if text.strip() and int(data['conf'][i]) > 40:
-                x = (data['left'][i] / img.width) * page_width
-                y = page_height - (data['top'][i] / img.height) * page_height
-                c.setFont("Helvetica", 10)
-                c.drawString(x, y, text)
+    for image_path in image_paths:
+        img = PIL.Image.open(image_path)
+        img_w, img_h = img.size
+        result = reader.readtext(image_path)
+        for (bbox, text, confidence) in result:
+            if confidence < 0.4:
+                continue
+            x1, y1 = bbox[0]
+            y2 = bbox[2][1]
+            pdf_x = (x1 / img_w) * page_width
+            pdf_y = page_height - (y2 / img_h) * page_height
+            c.setFont("Helvetica", 10)
+            c.drawString(pdf_x, pdf_y, text)
         c.showPage()
     c.save()
 
@@ -89,7 +98,12 @@ if uploaded_file:
     st.success(f"✅ Uploaded: {uploaded_file.name}")
 
     if st.button("🚀 Process Document", type="primary"):
+
+        # Reset previous results
+        st.session_state.results = None
+
         reader = load_ocr()
+
         with tempfile.TemporaryDirectory() as tmpdir:
 
             # Save uploaded PDF
@@ -153,52 +167,62 @@ Document: {full_text}
 """)
                 st.write("✅ Covenants & Schedules done")
 
-        # ── Display Results ───────────────────────────────
-        st.divider()
-        st.subheader("📥 Downloads")
-        col1, col2, col3, col4 = st.columns(4)
+        # Save everything to session state
+        st.session_state.results = {
+            "quick_summary": quick_summary,
+            "deep_summary": deep_summary,
+            "covenant_summary": covenant_summary,
+            "selectable_pdf_bytes": selectable_pdf_bytes
+        }
 
-        with col1:
-            st.download_button(
-                "📄 Selectable PDF",
-                data=selectable_pdf_bytes,
-                file_name="selectable_document.pdf",
-                mime="application/pdf"
-            )
-        with col2:
-            st.download_button(
-                "⚡ Quick Summary",
-                data=quick_summary,
-                file_name="quick_summary.md",
-                mime="text/markdown"
-            )
-        with col3:
-            st.download_button(
-                "📋 Deep Summary",
-                data=deep_summary,
-                file_name="deep_summary.md",
-                mime="text/markdown"
-            )
-        with col4:
-            st.download_button(
-                "⚖️ Covenants & Schedules",
-                data=covenant_summary,
-                file_name="covenants_schedules.md",
-                mime="text/markdown"
-            )
+# ── Display results (persists across download clicks) ─────
+if st.session_state.results:
+    r = st.session_state.results
 
-        st.divider()
+    st.divider()
+    st.subheader("📥 Downloads")
+    col1, col2, col3, col4 = st.columns(4)
 
-        # ── Display summaries in tabs ─────────────────────
-        tab1, tab2, tab3 = st.tabs([
+    with col1:
+        st.download_button(
+            "📄 Selectable PDF",
+            data=r["selectable_pdf_bytes"],
+            file_name="selectable_document.pdf",
+            mime="application/pdf"
+        )
+    with col2:
+        st.download_button(
             "⚡ Quick Summary",
+            data=r["quick_summary"],
+            file_name="quick_summary.md",
+            mime="text/markdown"
+        )
+    with col3:
+        st.download_button(
             "📋 Deep Summary",
-            "⚖️ Covenants & Schedules"
-        ])
+            data=r["deep_summary"],
+            file_name="deep_summary.md",
+            mime="text/markdown"
+        )
+    with col4:
+        st.download_button(
+            "⚖️ Covenants & Schedules",
+            data=r["covenant_summary"],
+            file_name="covenants_schedules.md",
+            mime="text/markdown"
+        )
 
-        with tab1:
-            st.markdown(quick_summary)
-        with tab2:
-            st.markdown(deep_summary)
-        with tab3:
-            st.markdown(covenant_summary)
+    st.divider()
+
+    tab1, tab2, tab3 = st.tabs([
+        "⚡ Quick Summary",
+        "📋 Deep Summary",
+        "⚖️ Covenants & Schedules"
+    ])
+
+    with tab1:
+        st.markdown(r["quick_summary"])
+    with tab2:
+        st.markdown(r["deep_summary"])
+    with tab3:
+        st.markdown(r["covenant_summary"])
